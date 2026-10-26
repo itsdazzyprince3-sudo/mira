@@ -8,7 +8,11 @@ type InstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
 
-export function PwaUpdates() {
+type VersionResponse = {
+  version?: unknown
+}
+
+export function PwaUpdates({ buildVersion }: { buildVersion: string }) {
   const [updateReady, setUpdateReady] = useState(false)
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null)
   const [showInstallButton, setShowInstallButton] = useState(false)
@@ -18,8 +22,21 @@ export function PwaUpdates() {
     let registration: ServiceWorkerRegistration | undefined
     let checkInterval: number | undefined
     let disposed = false
-    const hadController = Boolean(navigator.serviceWorker?.controller)
-    const checkForUpdate = () => {
+    const checkForUpdate = async () => {
+      if (!navigator.onLine) return
+
+      try {
+        const response = await fetch('/api/version', { cache: 'no-store' })
+        if (!response.ok) throw new Error(`Version check failed (${response.status}).`)
+        const result: VersionResponse = await response.json()
+        if (typeof result.version !== 'string' || !result.version) {
+          throw new Error('Version check returned an invalid app version.')
+        }
+        if (result.version !== buildVersion) setUpdateReady(true)
+      } catch (error) {
+        console.error('[MIRA] Could not check the latest app version:', error)
+      }
+
       void registration?.update().catch((error: unknown) => {
         console.error('[MIRA] Could not check for an app update:', error)
       })
@@ -41,21 +58,15 @@ export function PwaUpdates() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstall)
 
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-      const handleControllerChange = () => {
-        if (hadController) setUpdateReady(true)
-      }
-
-      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
-
       void navigator.serviceWorker.register('/sw.js', { scope: '/' })
         .then((result) => {
           if (disposed) return
           registration = result
 
-          checkInterval = window.setInterval(checkForUpdate, 60 * 60 * 1000)
+          checkInterval = window.setInterval(() => void checkForUpdate(), 5 * 60 * 1000)
           window.addEventListener('online', handleOnline)
           document.addEventListener('visibilitychange', handleVisibility)
-          checkForUpdate()
+          void checkForUpdate()
         })
         .catch((error: unknown) => {
           console.error('[MIRA] Could not register app updates:', error)
@@ -67,7 +78,6 @@ export function PwaUpdates() {
         window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
         window.removeEventListener('online', handleOnline)
         document.removeEventListener('visibilitychange', handleVisibility)
-        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
       }
     }
 

@@ -178,8 +178,9 @@ export default function Page() {
 
       if (error || !data.url) {
         const providerDisabled = error?.message.toLowerCase().includes('provider is not enabled')
+          || error?.message.toLowerCase().includes('unsupported provider')
         setAuthError(providerDisabled
-          ? 'Google sign-in is disabled for this Supabase project. Use email and password, or enable Google in Supabase Auth providers.'
+          ? 'Google sign-in is disabled in Supabase. In Supabase Dashboard → Authentication → Sign In / Providers, enable Google and add the Google OAuth client ID and secret. Until then, use email and password.'
           : 'Google sign-in could not start. Please try email and password instead.')
         return
       }

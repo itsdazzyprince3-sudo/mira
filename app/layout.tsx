@@ -49,7 +49,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         {children}
-        <PwaUpdates />
+        <PwaUpdates buildVersion={process.env.MIRA_APP_VERSION ?? 'unknown'} />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
