@@ -1,4 +1,5 @@
-import { generateText, gateway } from 'ai'
+import { generateText } from 'ai'
+import { xai } from '@ai-sdk/xai'
 import { NextResponse } from 'next/server'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -28,9 +29,9 @@ export async function POST(request: Request) {
   if (message.length > 8000) {
     return NextResponse.json({ error: 'Messages must be 8,000 characters or fewer.' }, { status: 413 })
   }
-  if (!process.env.AI_GATEWAY_API_KEY) {
+  if (!process.env.XAI_API_KEY) {
     return NextResponse.json({
-      error: 'MIRA’s AI brain is not configured. Add AI_GATEWAY_API_KEY to your local environment and Vercel project settings.',
+      error: 'MIRA’s Grok brain is not configured. Add your xAI API key as XAI_API_KEY in .env.local, then restart the app.',
     }, { status: 503 })
   }
 
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await generateText({
-      model: gateway('xai/grok-4.1-fast'),
+      model: xai('grok-4.1-fast'),
       system: `You are MIRA, a capable, warm, concise personal AI assistant. Reply naturally to every user message. Be honest about what you can and cannot do in this browser app, never claim an action happened if you cannot perform it, and ask a focused follow-up when needed. You can help with planning, writing, explanations, coding, organization, and safe reversible tasks. Do not use canned phrases like "I'm on it" unless they fit the context.`,
       messages: [...history, { role: 'user', content: message }],
       maxOutputTokens: 500,
@@ -55,9 +56,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ reply: result.text })
   } catch (error) {
-    console.error('[MIRA] AI Gateway request failed:', error instanceof Error ? error.message : 'Unknown provider error')
+    console.error('[MIRA] xAI request failed:', error instanceof Error ? error.message : 'Unknown provider error')
     return NextResponse.json({
-      error: 'MIRA could not reach the xAI model through AI Gateway. Check your API key, model access, and Gateway status, then retry.',
+      error: 'MIRA could not reach Grok. Check that XAI_API_KEY is valid, has API credits, and can access this model.',
     }, { status: 502 })
   }
 }
