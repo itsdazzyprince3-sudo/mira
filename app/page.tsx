@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { MiraCompanion } from '@/components/mira-companion'
 import {
   Activity,
+  ArrowUpRight,
   BrainCircuit,
   Check,
   ChevronRight,
@@ -26,6 +28,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Stethoscope,
   Volume2,
   WandSparkles,
   X,
@@ -132,64 +135,80 @@ export default function Page() {
   }
 
   async function handleAuth() {
-    const supabase = createClient()
     setAuthLoading(true)
     setAuthError('')
     setAuthMessage('')
-    const result = authMode === 'login'
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback` },
-        })
-    if (result.error) {
-      setAuthError(result.error.message.toLowerCase().includes('confirm') ? 'Check your email to confirm your account.' : 'Invalid email or password.')
-    } else if (authMode === 'signup') {
-      setAuthMessage('Check your email to confirm your account.')
-    } else {
-      setUserEmail(result.data.user?.email ?? email)
-      setShowLogin(false)
+    try {
+      const supabase = createClient()
+      const result = authMode === 'login'
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({
+            email,
+            password,
+            options: { emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback` },
+          })
+      if (result.error) {
+        setAuthError(result.error.message.toLowerCase().includes('confirm') ? 'Check your email to confirm your account.' : 'Invalid email or password.')
+      } else if (authMode === 'signup') {
+        setAuthMessage('Check your email to confirm your account.')
+      } else {
+        setUserEmail(result.data.user?.email ?? email)
+        setShowLogin(false)
+      }
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Account sign-in could not start.')
+    } finally {
+      setAuthLoading(false)
     }
-    setAuthLoading(false)
   }
 
   async function handleGoogleLogin() {
-    const supabase = createClient()
     setAuthError('')
+    setAuthMessage('')
     setAuthLoading(true)
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`,
-        skipBrowserRedirect: true,
-      },
-    })
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: true,
+        },
+      })
 
-    if (error || !data.url) {
-      const providerDisabled = error?.message.toLowerCase().includes('provider is not enabled')
-      setAuthError(providerDisabled
-        ? 'Google sign-in is disabled for this Supabase project. Use email and password, or enable Google in Supabase Auth providers.'
-        : 'Google sign-in could not start. Please try email and password instead.')
+      if (error || !data.url) {
+        const providerDisabled = error?.message.toLowerCase().includes('provider is not enabled')
+        setAuthError(providerDisabled
+          ? 'Google sign-in is disabled for this Supabase project. Use email and password, or enable Google in Supabase Auth providers.'
+          : 'Google sign-in could not start. Please try email and password instead.')
+        return
+      }
+
+      // Google blocks OAuth pages inside the v0 preview iframe. Open the flow in a
+      // top-level browser tab instead of navigating the embedded preview.
+      const authWindow = window.open(data.url, '_blank', 'noopener,noreferrer')
+      if (!authWindow) {
+        setAuthError('Allow pop-ups to continue with Google.')
+      } else {
+        setAuthMessage('Google sign-in opened in a new tab.')
+      }
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Google sign-in could not start.')
+    } finally {
       setAuthLoading(false)
-      return
     }
-
-    // Google blocks OAuth pages inside the v0 preview iframe. Open the flow in a
-    // top-level browser tab instead of navigating the embedded preview.
-    const authWindow = window.open(data.url, '_blank', 'noopener,noreferrer')
-    if (!authWindow) {
-      setAuthError('Allow pop-ups to continue with Google.')
-    } else {
-      setAuthMessage('Google sign-in opened in a new tab.')
-    }
-    setAuthLoading(false)
   }
 
   async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    setUserEmail('')
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      setUserEmail('')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Sign-out could not be completed.')
+      setShowLogin(true)
+    }
   }
 
   async function handleSend(command?: string) {
@@ -206,14 +225,19 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: prompt }),
       })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error)
-      setReply(data.reply)
-      speakMira(data.reply)
-    } catch {
-      const fallback = 'I could not reach my AI brain right now. Please try again.'
-      setReply(fallback)
-      speakMira(fallback)
+      const data: unknown = await response.json()
+      if (!data || typeof data !== 'object') throw new Error(`MIRA could not read the server response (${response.status}).`)
+      const result = data as { error?: unknown; reply?: unknown }
+      if (!response.ok) {
+        throw new Error(typeof result.error === 'string' ? result.error : `MIRA request failed (${response.status}).`)
+      }
+      if (typeof result.reply !== 'string' || !result.reply.trim()) {
+        throw new Error('MIRA received an empty response. Please try again.')
+      }
+      setReply(result.reply)
+      speakMira(result.reply)
+    } catch (error) {
+      setReply(error instanceof Error ? error.message : 'MIRA could not reach the AI provider. Please try again.')
     }
   }
 
@@ -251,7 +275,7 @@ export default function Page() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">PERSONAL INTELLIGENCE / SESSION 01</p><h1>Good evening, Alex.</h1></div>
-          <div className="top-actions"><div className="model-chip"><span className="model-dot" /><span><small>AI BRAIN</small> xAI / configured</span><ChevronRight size={14} /></div><button className="icon-button" aria-label="Help"><CircleHelp size={18} /></button><button className="icon-button" aria-label="More options"><MoreHorizontal size={18} /></button></div>
+          <div className="top-actions"><div className="model-chip"><span className="model-dot" /><span><small>AI BRAIN</small> xAI / AI Gateway</span><ChevronRight size={14} /></div><button className="icon-button" aria-label="Help"><CircleHelp size={18} /></button><button className="icon-button" aria-label="More options"><MoreHorizontal size={18} /></button></div>
         </header>
         <div className="content-grid">
           <div className="conversation-column">
@@ -264,14 +288,16 @@ export default function Page() {
             <div className="composer-wrap"><div className="composer"><button className="composer-icon" aria-label="Attach file"><Paperclip size={18} /></button><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask MIRA anything..." rows={1} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); handleSend() } }} /><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={toggleListening} aria-label={isListening ? 'Stop listening' : 'Start listening'}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="send-button" onClick={() => void handleSend()} aria-label="Send message"><Send size={17} /></button></div><div className="composer-meta"><span><Command size={12} /> Enter to send</span><span><Headphones size={12} /> {isListening ? 'Listening...' : 'Push to talk'}</span><span className="meta-right">MIRA can make mistakes. Verify important actions.</span></div></div>
           </div>
           <aside className="status-column">
-            <div className="status-card now-card"><div className="card-heading"><span>NOW</span><span className="live-label"><i /> LIVE</span></div><div className="orbital-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core"><Sparkles size={22} /></div></div><h2>Standing by</h2><p>Say <strong>“Hey Mira”</strong> or press the microphone to begin.</p><div className="voice-bars">{[12,20,31,19,27,38,23,16,29,11,24,34,18,27,14,22].map((height, i) => <span key={i} style={{ height }} />)}</div><div className="status-line"><span><i className="green-dot" /> Wake word active</span><button onClick={toggleListening}>{isListening ? 'Stop mic' : 'Test mic'}</button></div></div>
+            <MiraCompanion />
+            <div className="status-card now-card"><div className="card-heading"><span>VOICE STATUS</span><span className="live-label"><i /> LIVE</span></div><div className="voice-bars">{[12,20,31,19,27,38,23,16,29,11,24,34,18,27,14,22].map((height, i) => <span key={i} style={{ height }} />)}</div><div className="status-line"><span><i className="green-dot" /> Voice ready</span><button onClick={toggleListening}>{isListening ? 'Stop mic' : 'Test mic'}</button></div></div>
+            <div className="status-card doctor-card"><div className="card-heading"><span><Stethoscope size={13} /> PROJECT DOCTOR</span><span className="doctor-ready">READY</span></div><p>Run install, type, and production-build checks. Dependency updates are test-gated pull requests.</p><a href="https://github.com/itsdazzyprince3-sudo/mira/actions/workflows/doctor.yml" target="_blank" rel="noreferrer">Run Doctor checks <ArrowUpRight size={14} /></a><a href="https://github.com/itsdazzyprince3-sudo/mira/pulls?q=is%3Apr+is%3Aopen" target="_blank" rel="noreferrer">Review or close proposals <ArrowUpRight size={14} /></a><small>Merge confirms a change. Close an unmerged PR to discard it; this never reverts already-merged work.</small></div>
             <div className="status-card task-card"><div className="card-heading"><span>CURRENT TASK</span><button aria-label="Cancel task"><X size={15} /></button></div><div className="task-empty"><div className="task-icon"><Zap size={17} /></div><div><strong>No active tasks</strong><span>Automation will appear here</span></div></div></div>
             <div className="status-card security-card"><div className="card-heading"><span>SAFETY CENTER</span><ShieldCheck size={16} /></div><div className="security-row"><div className="security-icon"><ShieldCheck size={15} /></div><div><strong>Protected mode</strong><span>Every action needs your approval</span></div></div><div className="level-row"><span>LEVEL 0 <small>Read only</small></span><span className="level-active">LEVEL 1 <small>Reversible</small></span><span>LEVEL 2 <small>Sensitive</small></span></div></div>
           </aside>
         </div>
       </section>
       {showLogin && <div className="modal-backdrop" onClick={() => setShowLogin(false)}><div className="settings-modal login-modal" onClick={(e) => e.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">MIRA / ACCOUNT</p><h2>{authMode === 'login' ? 'Welcome back' : 'Create account'}</h2></div><button className="icon-button" onClick={() => setShowLogin(false)} aria-label="Close login"><X size={18} /></button></div><form onSubmit={(e) => { e.preventDefault(); void handleAuth() }}><label className="auth-label">Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></label><label className="auth-label">Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} /></label>{authError && <p className="auth-error">{authError}</p>}{authMessage && <p className="auth-message">{authMessage}</p>}<button className="modal-close" disabled={authLoading}>{authLoading ? 'Connecting...' : authMode === 'login' ? 'Sign in' : 'Create account'}</button></form><button className="google-button" onClick={() => void handleGoogleLogin()}>Continue with Google</button><button className="auth-switch" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(''); setAuthMessage('') }}>{authMode === 'login' ? 'Need an account? Create one' : 'Already have an account? Sign in'}</button></div></div>}
-      {showSettings && <div className="modal-backdrop" onClick={() => setShowSettings(false)}><div className="settings-modal" onClick={(e) => e.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">MIRA / CONFIGURATION</p><h2>Settings</h2></div><button className="icon-button" onClick={() => setShowSettings(false)} aria-label="Close settings"><X size={18} /></button></div><div className="settings-list"><label>AI provider <span>xAI / configured</span></label><label>Wake phrase <span>“Mira” + “Hey Mira”</span></label><label>Voice interaction <span>Wake word + push-to-talk</span></label><label>Permission ceiling <span>Level 1 · Reversible</span></label></div><div className="modal-note"><ShieldCheck size={16} /> Local preview status is genuine; connect your provider and Windows bridge to enable actions.</div><button className="modal-close" onClick={() => setShowSettings(false)}>Done</button></div></div>}
+      {showSettings && <div className="modal-backdrop" onClick={() => setShowSettings(false)}><div className="settings-modal" onClick={(e) => e.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">MIRA / CONFIGURATION</p><h2>Settings</h2></div><button className="icon-button" onClick={() => setShowSettings(false)} aria-label="Close settings"><X size={18} /></button></div><div className="settings-list"><label>AI provider <span>xAI via AI Gateway</span></label><label>Wake phrase <span>“Mira” + “Hey Mira”</span></label><label>Voice interaction <span>Wake word + push-to-talk</span></label><label>Live companion <span>Optional camera · on-device cues</span></label><label>Permission ceiling <span>Level 1 · Reversible</span></label></div><div className="modal-note"><ShieldCheck size={16} /> Camera use is opt-in. Video is analyzed on this device and is never recorded or uploaded; expression cues are not a reliable measure of emotion.</div><div className="modal-note"><Sparkles size={16} /> Local preview status is genuine; connect your provider and Windows bridge to enable actions.</div><button className="modal-close" onClick={() => setShowSettings(false)}>Done</button></div></div>}
     </main>
   )
 }
