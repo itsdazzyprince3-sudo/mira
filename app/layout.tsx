@@ -1,11 +1,18 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { PwaUpdates } from '@/components/pwa-updates'
 import './globals.css'
 
 export const metadata: Metadata = {
   title: 'MIRA — Personal Intelligence',
   description: 'A privacy-first personal AI assistant with permission-controlled automation.',
   generator: 'v0.app',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'MIRA',
+  },
   icons: {
     icon: [
       {
@@ -42,6 +49,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         {children}
+        <PwaUpdates />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
