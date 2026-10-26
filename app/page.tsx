@@ -39,6 +39,20 @@ const quickActions = [
   { icon: MonitorCog, label: 'System check' },
 ]
 
+type SpeechRecognitionLike = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  start: () => void
+  stop: () => void
+  abort: () => void
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+  onerror: (() => void) | null
+  onend: (() => void) | null
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
+
 const navItems = [
   { label: 'Conversation', icon: Sparkles, active: true },
   { label: 'Memory', icon: BrainCircuit },
@@ -60,36 +74,41 @@ export default function Page() {
   const [authMessage, setAuthMessage] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
   const [userEmail, setUserEmail] = useState('')
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null)
 
   function speakMira(text: string) {
-    window.speechSynthesis?.cancel()
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text)
-      const femaleVoice = window.speechSynthesis.getVoices().find((voice) =>
-        /female|samantha|zira|karen|victoria|ava|susan/i.test(voice.name),
-      )
-      if (femaleVoice) utterance.voice = femaleVoice
-      utterance.rate = 0.96
-      utterance.pitch = 1.08
-      window.speechSynthesis.speak(utterance)
-    } else {
-      void voiceAudioRef.current?.play()
-    }
+    if (!('speechSynthesis' in window)) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    const voices = window.speechSynthesis.getVoices()
+    const femaleVoice = voices.find((voice) => /female|samantha|victoria|karen|moira|ava|zira|susan/i.test(voice.name))
+    if (femaleVoice) utterance.voice = femaleVoice
+    utterance.rate = 0.94
+    utterance.pitch = 1.12
+    window.speechSynthesis.speak(utterance)
   }
 
   useEffect(() => {
-    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition
+    const speechWindow = window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }
+    const SpeechRecognitionAPI = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
     if (!SpeechRecognitionAPI) return
     const recognition = new SpeechRecognitionAPI()
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = false
     recognition.lang = 'en-US'
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript
-      setMessage(transcript)
-      setIsListening(false)
+      const transcript = event.results[event.results.length - 1][0].transcript.trim()
+      const wakeMatch = transcript.match(/^(?:hey\s+)?mira\b[,:]?\s*(.*)$/i)
+      if (wakeMatch) {
+        const command = wakeMatch[1].trim()
+        setIsListening(false)
+        if (command) window.setTimeout(() => void handleSend(command), 0)
+        else setMessage('')
+      } else {
+        setMessage(transcript)
+        setIsListening(false)
+      }
     }
     recognition.onerror = () => setIsListening(false)
     recognition.onend = () => setIsListening(false)
@@ -173,15 +192,29 @@ export default function Page() {
     setUserEmail('')
   }
 
-  function handleSend() {
-    const prompt = message.trim()
+  async function handleSend(command?: string) {
+    const prompt = (command ?? message).trim()
     if (!prompt) return
     setSent(true)
     setSentMessage(prompt)
     setMessage('')
-    const nextReply = `I’m on it. I can help you with “${prompt}”.`
-    setReply(nextReply)
-    speakMira(nextReply)
+    setReply('Thinking...')
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: prompt }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error)
+      setReply(data.reply)
+      speakMira(data.reply)
+    } catch {
+      const fallback = 'I could not reach my AI brain right now. Please try again.'
+      setReply(fallback)
+      speakMira(fallback)
+    }
   }
 
   return (
@@ -228,7 +261,7 @@ export default function Page() {
               {reply && <div className="welcome-row reply-row"><div className="avatar-wrap small-avatar"><div className="mira-avatar"><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div></div></div><div className="welcome-copy"><span className="message-time">MIRA / just now</span><p>{reply}</p><button className="speak-again" onClick={() => speakMira(reply)}><Volume2 size={13} /> Speak response</button></div></div>}
               <div className="suggestion-block"><p className="section-kicker">SUGGESTED STARTING POINTS</p><div className="quick-actions">{quickActions.map((action) => { const Icon = action.icon; return <button key={action.label} onClick={() => setMessage(action.label)}><Icon size={16} /><span>{action.label}</span><ChevronRight size={14} /></button> })}</div></div>
             </div>
-            <div className="composer-wrap"><div className="composer"><button className="composer-icon" aria-label="Attach file"><Paperclip size={18} /></button><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask MIRA anything..." rows={1} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); handleSend() } }} /><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={toggleListening} aria-label={isListening ? 'Stop listening' : 'Start listening'}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="send-button" onClick={handleSend} aria-label="Send message"><Send size={17} /></button></div><div className="composer-meta"><span><Command size={12} /> Enter to send</span><span><Headphones size={12} /> {isListening ? 'Listening...' : 'Push to talk'}</span><span className="meta-right">MIRA can make mistakes. Verify important actions.</span></div></div>
+            <div className="composer-wrap"><div className="composer"><button className="composer-icon" aria-label="Attach file"><Paperclip size={18} /></button><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask MIRA anything..." rows={1} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); handleSend() } }} /><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={toggleListening} aria-label={isListening ? 'Stop listening' : 'Start listening'}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="send-button" onClick={() => void handleSend()} aria-label="Send message"><Send size={17} /></button></div><div className="composer-meta"><span><Command size={12} /> Enter to send</span><span><Headphones size={12} /> {isListening ? 'Listening...' : 'Push to talk'}</span><span className="meta-right">MIRA can make mistakes. Verify important actions.</span></div></div>
           </div>
           <aside className="status-column">
             <div className="status-card now-card"><div className="card-heading"><span>NOW</span><span className="live-label"><i /> LIVE</span></div><div className="orbital-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core"><Sparkles size={22} /></div></div><h2>Standing by</h2><p>Say <strong>“Hey Mira”</strong> or press the microphone to begin.</p><div className="voice-bars">{[12,20,31,19,27,38,23,16,29,11,24,34,18,27,14,22].map((height, i) => <span key={i} style={{ height }} />)}</div><div className="status-line"><span><i className="green-dot" /> Wake word active</span><button onClick={toggleListening}>{isListening ? 'Stop mic' : 'Test mic'}</button></div></div>
