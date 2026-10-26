@@ -61,6 +61,23 @@ export default function Page() {
   const [authLoading, setAuthLoading] = useState(false)
   const [userEmail, setUserEmail] = useState('')
   const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  function speakMira(text: string) {
+    window.speechSynthesis?.cancel()
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text)
+      const femaleVoice = window.speechSynthesis.getVoices().find((voice) =>
+        /female|samantha|zira|karen|victoria|ava|susan/i.test(voice.name),
+      )
+      if (femaleVoice) utterance.voice = femaleVoice
+      utterance.rate = 0.96
+      utterance.pitch = 1.08
+      window.speechSynthesis.speak(utterance)
+    } else {
+      void voiceAudioRef.current?.play()
+    }
+  }
 
   useEffect(() => {
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -131,7 +148,10 @@ export default function Page() {
     })
 
     if (error || !data.url) {
-      setAuthError('Google sign-in is not available yet.')
+      const providerDisabled = error?.message.toLowerCase().includes('provider is not enabled')
+      setAuthError(providerDisabled
+        ? 'Google sign-in is disabled for this Supabase project. Use email and password, or enable Google in Supabase Auth providers.'
+        : 'Google sign-in could not start. Please try email and password instead.')
       setAuthLoading(false)
       return
     }
@@ -161,17 +181,12 @@ export default function Page() {
     setMessage('')
     const nextReply = `I’m on it. I can help you with “${prompt}”.`
     setReply(nextReply)
-    window.speechSynthesis?.cancel()
-    if (window.speechSynthesis) {
-      const utterance = new SpeechSynthesisUtterance(nextReply)
-      utterance.rate = 1.02
-      utterance.pitch = 1.05
-      window.speechSynthesis.speak(utterance)
-    }
+    speakMira(nextReply)
   }
 
   return (
     <main className="mira-shell">
+      <audio ref={voiceAudioRef} src="/audio/mira-voice.mp3" preload="auto" />
       <div className="ambient ambient-cyan" />
       <div className="ambient ambient-violet" />
       <aside className="sidebar">
@@ -210,7 +225,7 @@ export default function Page() {
             <div className="chat-scroll">
               <div className="welcome-row"><div className="avatar-wrap"><div className="avatar-halo" /><div className="mira-avatar"><div className="avatar-ear left-ear" /><div className="avatar-ear right-ear" /><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div><div className="avatar-neck" /></div><span className="avatar-status"><Check size={11} /></span></div><div className="welcome-copy"><span className="message-time">MIRA / just now</span><p>Hey! I&apos;m Mira, your personal AI assistant. Everything is ready. What would you like to work on today?</p><div className="welcome-tags"><span><Activity size={12} /> Listening for “Mira”</span><span><ShieldCheck size={12} /> Privacy-first</span></div></div></div>
               {sent && <div className="user-bubble"><span className="message-time">YOU / just now</span><p>{sentMessage}</p></div>}
-              {reply && <div className="welcome-row reply-row"><div className="avatar-wrap small-avatar"><div className="mira-avatar"><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div></div></div><div className="welcome-copy"><span className="message-time">MIRA / just now</span><p>{reply}</p><button className="speak-again" onClick={() => { const utterance = new SpeechSynthesisUtterance(reply); window.speechSynthesis?.speak(utterance) }}><Volume2 size={13} /> Speak response</button></div></div>}
+              {reply && <div className="welcome-row reply-row"><div className="avatar-wrap small-avatar"><div className="mira-avatar"><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div></div></div><div className="welcome-copy"><span className="message-time">MIRA / just now</span><p>{reply}</p><button className="speak-again" onClick={() => speakMira(reply)}><Volume2 size={13} /> Speak response</button></div></div>}
               <div className="suggestion-block"><p className="section-kicker">SUGGESTED STARTING POINTS</p><div className="quick-actions">{quickActions.map((action) => { const Icon = action.icon; return <button key={action.label} onClick={() => setMessage(action.label)}><Icon size={16} /><span>{action.label}</span><ChevronRight size={14} /></button> })}</div></div>
             </div>
             <div className="composer-wrap"><div className="composer"><button className="composer-icon" aria-label="Attach file"><Paperclip size={18} /></button><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask MIRA anything..." rows={1} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); handleSend() } }} /><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={toggleListening} aria-label={isListening ? 'Stop listening' : 'Start listening'}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="send-button" onClick={handleSend} aria-label="Send message"><Send size={17} /></button></div><div className="composer-meta"><span><Command size={12} /> Enter to send</span><span><Headphones size={12} /> {isListening ? 'Listening...' : 'Push to talk'}</span><span className="meta-right">MIRA can make mistakes. Verify important actions.</span></div></div>
