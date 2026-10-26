@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import {
   Activity,
   BrainCircuit,
@@ -12,6 +13,8 @@ import {
   FileText,
   FolderOpen,
   Headphones,
+  LogIn,
+  LogOut,
   Mic,
   MicOff,
   MonitorCog,
@@ -49,6 +52,14 @@ export default function Page() {
   const [sent, setSent] = useState(false)
   const [sentMessage, setSentMessage] = useState('')
   const [reply, setReply] = useState('')
+  const [showLogin, setShowLogin] = useState(false)
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [authError, setAuthError] = useState('')
+  const [authMessage, setAuthMessage] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [userEmail, setUserEmail] = useState('')
   const recognitionRef = useRef<SpeechRecognition | null>(null)
 
   useEffect(() => {
@@ -82,6 +93,42 @@ export default function Page() {
       recognition.start()
       setIsListening(true)
     }
+  }
+
+  async function handleAuth() {
+    const supabase = createClient()
+    setAuthLoading(true)
+    setAuthError('')
+    setAuthMessage('')
+    const result = authMode === 'login'
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback` },
+        })
+    if (result.error) {
+      setAuthError(result.error.message.toLowerCase().includes('confirm') ? 'Check your email to confirm your account.' : 'Invalid email or password.')
+    } else if (authMode === 'signup') {
+      setAuthMessage('Check your email to confirm your account.')
+    } else {
+      setUserEmail(result.data.user?.email ?? email)
+      setShowLogin(false)
+    }
+    setAuthLoading(false)
+  }
+
+  async function handleGoogleLogin() {
+    const supabase = createClient()
+    setAuthError('')
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback` } })
+    if (error) setAuthError('Google sign-in is not available yet.')
+  }
+
+  async function handleLogout() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    setUserEmail('')
   }
 
   function handleSend() {
@@ -127,7 +174,7 @@ export default function Page() {
         <div className="sidebar-footer">
           <div className="permission-card"><ShieldCheck size={17} /><div><strong>Permission level 1</strong><span>Reversible actions only</span></div><ChevronRight size={14} /></div>
           <button className="settings-button" onClick={() => setShowSettings(true)}><Settings2 size={17} /> Settings <span className="shortcut">⌘ ,</span></button>
-          <div className="profile-row"><div className="profile-avatar">A</div><div><strong>Alex</strong><span>Local profile</span></div><MoreHorizontal size={17} className="profile-more" /></div>
+          <button className="profile-row profile-button" onClick={() => userEmail ? handleLogout() : setShowLogin(true)}><div className="profile-avatar">{userEmail ? userEmail[0].toUpperCase() : 'A'}</div><div><strong>{userEmail || 'Sign in'}</strong><span>{userEmail ? 'Sign out' : 'Use your account'}</span></div>{userEmail ? <LogOut size={17} className="profile-more" /> : <LogIn size={17} className="profile-more" />}</button>
         </div>
       </aside>
 
@@ -153,6 +200,7 @@ export default function Page() {
           </aside>
         </div>
       </section>
+      {showLogin && <div className="modal-backdrop" onClick={() => setShowLogin(false)}><div className="settings-modal login-modal" onClick={(e) => e.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">MIRA / ACCOUNT</p><h2>{authMode === 'login' ? 'Welcome back' : 'Create account'}</h2></div><button className="icon-button" onClick={() => setShowLogin(false)} aria-label="Close login"><X size={18} /></button></div><form onSubmit={(e) => { e.preventDefault(); void handleAuth() }}><label className="auth-label">Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></label><label className="auth-label">Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} /></label>{authError && <p className="auth-error">{authError}</p>}{authMessage && <p className="auth-message">{authMessage}</p>}<button className="modal-close" disabled={authLoading}>{authLoading ? 'Connecting...' : authMode === 'login' ? 'Sign in' : 'Create account'}</button></form><button className="google-button" onClick={() => void handleGoogleLogin()}>Continue with Google</button><button className="auth-switch" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(''); setAuthMessage('') }}>{authMode === 'login' ? 'Need an account? Create one' : 'Already have an account? Sign in'}</button></div></div>}
       {showSettings && <div className="modal-backdrop" onClick={() => setShowSettings(false)}><div className="settings-modal" onClick={(e) => e.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">MIRA / CONFIGURATION</p><h2>Settings</h2></div><button className="icon-button" onClick={() => setShowSettings(false)} aria-label="Close settings"><X size={18} /></button></div><div className="settings-list"><label>AI provider <span>xAI / configured</span></label><label>Wake phrase <span>“Mira” + “Hey Mira”</span></label><label>Voice interaction <span>Wake word + push-to-talk</span></label><label>Permission ceiling <span>Level 1 · Reversible</span></label></div><div className="modal-note"><ShieldCheck size={16} /> Local preview status is genuine; connect your provider and Windows bridge to enable actions.</div><button className="modal-close" onClick={() => setShowSettings(false)}>Done</button></div></div>}
     </main>
   )
