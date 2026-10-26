@@ -121,8 +121,30 @@ export default function Page() {
   async function handleGoogleLogin() {
     const supabase = createClient()
     setAuthError('')
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback` } })
-    if (error) setAuthError('Google sign-in is not available yet.')
+    setAuthLoading(true)
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: true,
+      },
+    })
+
+    if (error || !data.url) {
+      setAuthError('Google sign-in is not available yet.')
+      setAuthLoading(false)
+      return
+    }
+
+    // Google blocks OAuth pages inside the v0 preview iframe. Open the flow in a
+    // top-level browser tab instead of navigating the embedded preview.
+    const authWindow = window.open(data.url, '_blank', 'noopener,noreferrer')
+    if (!authWindow) {
+      setAuthError('Allow pop-ups to continue with Google.')
+    } else {
+      setAuthMessage('Google sign-in opened in a new tab.')
+    }
+    setAuthLoading(false)
   }
 
   async function handleLogout() {
