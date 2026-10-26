@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Activity,
   BrainCircuit,
@@ -47,11 +47,58 @@ export default function Page() {
   const [isListening, setIsListening] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [sent, setSent] = useState(false)
+  const [sentMessage, setSentMessage] = useState('')
+  const [reply, setReply] = useState('')
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
+
+  useEffect(() => {
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognitionAPI) return
+    const recognition = new SpeechRecognitionAPI()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.lang = 'en-US'
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript
+      setMessage(transcript)
+      setIsListening(false)
+    }
+    recognition.onerror = () => setIsListening(false)
+    recognition.onend = () => setIsListening(false)
+    recognitionRef.current = recognition
+    return () => recognition.abort()
+  }, [])
+
+  function toggleListening() {
+    const recognition = recognitionRef.current
+    if (!recognition) {
+      setIsListening((current) => !current)
+      return
+    }
+    if (isListening) {
+      recognition.stop()
+      setIsListening(false)
+    } else {
+      recognition.start()
+      setIsListening(true)
+    }
+  }
 
   function handleSend() {
-    if (!message.trim()) return
+    const prompt = message.trim()
+    if (!prompt) return
     setSent(true)
+    setSentMessage(prompt)
     setMessage('')
+    const nextReply = `I’m on it. I can help you with “${prompt}”.`
+    setReply(nextReply)
+    window.speechSynthesis?.cancel()
+    if (window.speechSynthesis) {
+      const utterance = new SpeechSynthesisUtterance(nextReply)
+      utterance.rate = 1.02
+      utterance.pitch = 1.05
+      window.speechSynthesis.speak(utterance)
+    }
   }
 
   return (
@@ -93,13 +140,14 @@ export default function Page() {
           <div className="conversation-column">
             <div className="chat-scroll">
               <div className="welcome-row"><div className="avatar-wrap"><div className="avatar-halo" /><div className="mira-avatar"><div className="avatar-ear left-ear" /><div className="avatar-ear right-ear" /><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div><div className="avatar-neck" /></div><span className="avatar-status"><Check size={11} /></span></div><div className="welcome-copy"><span className="message-time">MIRA / just now</span><p>Hey! I&apos;m Mira, your personal AI assistant. Everything is ready. What would you like to work on today?</p><div className="welcome-tags"><span><Activity size={12} /> Listening for “Mira”</span><span><ShieldCheck size={12} /> Privacy-first</span></div></div></div>
-              {sent && <div className="user-bubble"><span className="message-time">YOU / just now</span><p>Can you help me with that?</p></div>}
+              {sent && <div className="user-bubble"><span className="message-time">YOU / just now</span><p>{sentMessage}</p></div>}
+              {reply && <div className="welcome-row reply-row"><div className="avatar-wrap small-avatar"><div className="mira-avatar"><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div></div></div><div className="welcome-copy"><span className="message-time">MIRA / just now</span><p>{reply}</p><button className="speak-again" onClick={() => { const utterance = new SpeechSynthesisUtterance(reply); window.speechSynthesis?.speak(utterance) }}><Volume2 size={13} /> Speak response</button></div></div>}
               <div className="suggestion-block"><p className="section-kicker">SUGGESTED STARTING POINTS</p><div className="quick-actions">{quickActions.map((action) => { const Icon = action.icon; return <button key={action.label} onClick={() => setMessage(action.label)}><Icon size={16} /><span>{action.label}</span><ChevronRight size={14} /></button> })}</div></div>
             </div>
-            <div className="composer-wrap"><div className="composer"><button className="composer-icon" aria-label="Attach file"><Paperclip size={18} /></button><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask MIRA anything..." rows={1} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); handleSend() } }} /><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={() => setIsListening(!isListening)} aria-label={isListening ? 'Stop listening' : 'Start listening'}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="send-button" onClick={handleSend} aria-label="Send message"><Send size={17} /></button></div><div className="composer-meta"><span><Command size={12} /> Enter to send</span><span><Headphones size={12} /> {isListening ? 'Listening...' : 'Push to talk'}</span><span className="meta-right">MIRA can make mistakes. Verify important actions.</span></div></div>
+            <div className="composer-wrap"><div className="composer"><button className="composer-icon" aria-label="Attach file"><Paperclip size={18} /></button><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask MIRA anything..." rows={1} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); handleSend() } }} /><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={toggleListening} aria-label={isListening ? 'Stop listening' : 'Start listening'}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="send-button" onClick={handleSend} aria-label="Send message"><Send size={17} /></button></div><div className="composer-meta"><span><Command size={12} /> Enter to send</span><span><Headphones size={12} /> {isListening ? 'Listening...' : 'Push to talk'}</span><span className="meta-right">MIRA can make mistakes. Verify important actions.</span></div></div>
           </div>
           <aside className="status-column">
-            <div className="status-card now-card"><div className="card-heading"><span>NOW</span><span className="live-label"><i /> LIVE</span></div><div className="orbital-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core"><Sparkles size={22} /></div></div><h2>Standing by</h2><p>Say <strong>“Hey Mira”</strong> or press the microphone to begin.</p><div className="voice-bars">{[12,20,31,19,27,38,23,16,29,11,24,34,18,27,14,22].map((height, i) => <span key={i} style={{ height }} />)}</div><div className="status-line"><span><i className="green-dot" /> Wake word active</span><button onClick={() => setIsListening(!isListening)}>{isListening ? 'Mute' : 'Test mic'}</button></div></div>
+            <div className="status-card now-card"><div className="card-heading"><span>NOW</span><span className="live-label"><i /> LIVE</span></div><div className="orbital-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core"><Sparkles size={22} /></div></div><h2>Standing by</h2><p>Say <strong>“Hey Mira”</strong> or press the microphone to begin.</p><div className="voice-bars">{[12,20,31,19,27,38,23,16,29,11,24,34,18,27,14,22].map((height, i) => <span key={i} style={{ height }} />)}</div><div className="status-line"><span><i className="green-dot" /> Wake word active</span><button onClick={toggleListening}>{isListening ? 'Stop mic' : 'Test mic'}</button></div></div>
             <div className="status-card task-card"><div className="card-heading"><span>CURRENT TASK</span><button aria-label="Cancel task"><X size={15} /></button></div><div className="task-empty"><div className="task-icon"><Zap size={17} /></div><div><strong>No active tasks</strong><span>Automation will appear here</span></div></div></div>
             <div className="status-card security-card"><div className="card-heading"><span>SAFETY CENTER</span><ShieldCheck size={16} /></div><div className="security-row"><div className="security-icon"><ShieldCheck size={15} /></div><div><strong>Protected mode</strong><span>Every action needs your approval</span></div></div><div className="level-row"><span>LEVEL 0 <small>Read only</small></span><span className="level-active">LEVEL 1 <small>Reversible</small></span><span>LEVEL 2 <small>Sensitive</small></span></div></div>
           </aside>
