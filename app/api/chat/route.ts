@@ -42,13 +42,14 @@ export async function POST(request: Request) {
       }).slice(-10).map(({ role, content }) => ({ role, content: content.slice(0, 4000) }))
     : []
 
+  const modelId = process.env.ABHIBOTS_MODEL || 'claude-sonnet-5'
   try {
     const abhibots = createOpenAI({
       apiKey: process.env.ABHIBOTS_API_KEY,
       baseURL: process.env.ABHIBOTS_BASE_URL || 'https://opus.abhibots.com/v1',
     })
     const result = await generateText({
-      model: abhibots(process.env.ABHIBOTS_MODEL || 'claude-sonnet-5'),
+      model: abhibots(modelId),
       system: `You are MIRA, a capable, warm, concise personal AI assistant. Reply naturally to every user message. Be honest about what you can and cannot do in this browser app, never claim an action happened if you cannot perform it, and ask a focused follow-up when needed. You can help with planning, writing, explanations, coding, organization, and safe reversible tasks. Do not use canned phrases like "I'm on it" unless they fit the context.`,
       messages: [...history, { role: 'user', content: message }],
       maxOutputTokens: 500,
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'AbhiBots rejected the request. Check that the key belongs to your AbhiBots account and has access or quota for this model.' }, { status: statusCode === 429 ? 429 : 402 })
     }
     if (statusCode === 404 || statusCode === 410) {
-      return NextResponse.json({ error: 'AbhiBots could not find this model. Set ABHIBOTS_MODEL to an exact model ID supported by your AbhiBots account.' }, { status: 502 })
+      return NextResponse.json({ error: `AbhiBots could not find model "${modelId}". Set ABHIBOTS_MODEL to an exact model ID listed in your AbhiBots account.` }, { status: 502 })
     }
     return NextResponse.json({
       error: 'MIRA could not reach AbhiBots. Check ABHIBOTS_API_KEY, ABHIBOTS_BASE_URL, and the model configured in ABHIBOTS_MODEL.',
