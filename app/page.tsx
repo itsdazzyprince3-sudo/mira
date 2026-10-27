@@ -69,6 +69,7 @@ export default function Page() {
   const [sent, setSent] = useState(false)
   const [sentMessage, setSentMessage] = useState('')
   const [reply, setReply] = useState('')
+  const [replyIsError, setReplyIsError] = useState(false)
   const [showLogin, setShowLogin] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
@@ -219,6 +220,7 @@ export default function Page() {
     setSentMessage(prompt)
     setMessage('')
     setReply('Thinking...')
+    setReplyIsError(false)
 
     try {
       const response = await fetch('/api/chat', {
@@ -227,18 +229,19 @@ export default function Page() {
         body: JSON.stringify({ message: prompt }),
       })
       const data: unknown = await response.json()
-      if (!data || typeof data !== 'object') throw new Error(`MIRA could not read the server response (${response.status}).`)
+      if (!data || typeof data !== 'object') throw new Error('MIRA couldn’t reply just now. Please try again in a moment.')
       const result = data as { error?: unknown; reply?: unknown }
       if (!response.ok) {
-        throw new Error(typeof result.error === 'string' ? result.error : `MIRA request failed (${response.status}).`)
+        throw new Error(typeof result.error === 'string' ? result.error : 'MIRA couldn’t reply just now. Please try again in a moment.')
       }
       if (typeof result.reply !== 'string' || !result.reply.trim()) {
-        throw new Error('MIRA received an empty response. Please try again.')
+        throw new Error('MIRA couldn’t reply just now. Please try again in a moment.')
       }
       setReply(result.reply)
       speakMira(result.reply)
-    } catch (error) {
-      setReply(error instanceof Error ? error.message : 'MIRA could not reach the AI provider. Please try again.')
+    } catch {
+      setReplyIsError(true)
+      setReply('MIRA couldn’t reply just now. Please try again in a moment.')
     }
   }
 
@@ -276,14 +279,14 @@ export default function Page() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">PERSONAL INTELLIGENCE / SESSION 01</p><h1>Good evening, Alex.</h1></div>
-          <div className="top-actions"><div className="model-chip"><span className="model-dot" /><span><small>AI BRAIN</small> AbhiBots · Claude Sonnet 5</span><ChevronRight size={14} /></div><button className="icon-button" aria-label="Help"><CircleHelp size={18} /></button><button className="icon-button" aria-label="More options"><MoreHorizontal size={18} /></button></div>
+          <div className="top-actions"><button className="icon-button" aria-label="Help"><CircleHelp size={18} /></button><button className="icon-button" aria-label="More options"><MoreHorizontal size={18} /></button></div>
         </header>
         <div className="content-grid">
           <div className="conversation-column">
             <div className="chat-scroll">
               <div className="welcome-row"><div className="avatar-wrap"><div className="avatar-halo" /><div className="mira-avatar"><div className="avatar-ear left-ear" /><div className="avatar-ear right-ear" /><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div><div className="avatar-neck" /></div><span className="avatar-status"><Check size={11} /></span></div><div className="welcome-copy"><span className="message-time">MIRA / just now</span><p>Hey! I&apos;m Mira, your personal AI assistant. Everything is ready. What would you like to work on today?</p><div className="welcome-tags"><span><Activity size={12} /> Listening for “Mira”</span><span><ShieldCheck size={12} /> Privacy-first</span></div></div></div>
               {sent && <div className="user-bubble"><span className="message-time">YOU / just now</span><p>{sentMessage}</p></div>}
-              {reply && <div className="welcome-row reply-row"><div className="avatar-wrap small-avatar"><div className="mira-avatar"><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div></div></div><div className="welcome-copy"><span className="message-time">MIRA / just now</span><p>{reply}</p><button className="speak-again" onClick={() => speakMira(reply)}><Volume2 size={13} /> Speak response</button></div></div>}
+              {reply && <div className={`welcome-row reply-row ${replyIsError ? 'reply-error' : ''}`} role={replyIsError ? 'alert' : undefined} aria-live={replyIsError ? 'assertive' : 'polite'}><div className="avatar-wrap small-avatar"><div className="mira-avatar"><div className="avatar-hair" /><div className="avatar-face"><span className="eye left-eye" /><span className="eye right-eye" /><span className="mouth" /></div></div></div><div className="welcome-copy"><span className="message-time">MIRA / {replyIsError ? 'ERROR' : 'just now'}</span><p>{reply}</p>{!replyIsError && <button className="speak-again" onClick={() => speakMira(reply)}><Volume2 size={13} /> Speak response</button>}</div></div>}
               <div className="suggestion-block"><p className="section-kicker">SUGGESTED STARTING POINTS</p><div className="quick-actions">{quickActions.map((action) => { const Icon = action.icon; return <button key={action.label} onClick={() => setMessage(action.label)}><Icon size={16} /><span>{action.label}</span><ChevronRight size={14} /></button> })}</div></div>
             </div>
             <div className="composer-wrap"><div className="composer"><button className="composer-icon" aria-label="Attach file"><Paperclip size={18} /></button><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask MIRA anything..." rows={1} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); handleSend() } }} /><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={toggleListening} aria-label={isListening ? 'Stop listening' : 'Start listening'}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="send-button" onClick={() => void handleSend()} aria-label="Send message"><Send size={17} /></button></div><div className="composer-meta"><span><Command size={12} /> Enter to send</span><span><Headphones size={12} /> {isListening ? 'Listening...' : 'Push to talk'}</span><span className="meta-right">MIRA can make mistakes. Verify important actions.</span></div></div>
@@ -298,7 +301,7 @@ export default function Page() {
         </div>
       </section>
       {showLogin && <div className="modal-backdrop" onClick={() => setShowLogin(false)}><div className="settings-modal login-modal" onClick={(e) => e.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">MIRA / ACCOUNT</p><h2>{authMode === 'login' ? 'Welcome back' : 'Create account'}</h2></div><button className="icon-button" onClick={() => setShowLogin(false)} aria-label="Close login"><X size={18} /></button></div><form onSubmit={(e) => { e.preventDefault(); void handleAuth() }}><label className="auth-label">Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></label><label className="auth-label">Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} /></label>{authError && <p className="auth-error">{authError}</p>}{authMessage && <p className="auth-message">{authMessage}</p>}<button className="modal-close" disabled={authLoading}>{authLoading ? 'Connecting...' : authMode === 'login' ? 'Sign in' : 'Create account'}</button></form><button className="google-button" onClick={() => void handleGoogleLogin()}>Continue with Google</button><button className="auth-switch" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(''); setAuthMessage('') }}>{authMode === 'login' ? 'Need an account? Create one' : 'Already have an account? Sign in'}</button></div></div>}
-      {showSettings && <div className="modal-backdrop" onClick={() => setShowSettings(false)}><div className="settings-modal" onClick={(e) => e.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">MIRA / CONFIGURATION</p><h2>Settings</h2></div><button className="icon-button" onClick={() => setShowSettings(false)} aria-label="Close settings"><X size={18} /></button></div><div className="settings-list"><label>AI provider <span>xAI via AI Gateway</span></label><label>Wake phrase <span>“Mira” + “Hey Mira”</span></label><label>Voice interaction <span>Wake word + push-to-talk</span></label><label>Live companion <span>Optional camera · on-device cues</span></label><label>Permission ceiling <span>Level 1 · Reversible</span></label></div><div className="modal-note"><ShieldCheck size={16} /> Camera use is opt-in. Video is analyzed on this device and is never recorded or uploaded; expression cues are not a reliable measure of emotion.</div><div className="modal-note"><Sparkles size={16} /> Local preview status is genuine; connect your provider and Windows bridge to enable actions.</div><button className="modal-close" onClick={() => setShowSettings(false)}>Done</button></div></div>}
+      {showSettings && <div className="modal-backdrop" onClick={() => setShowSettings(false)}><div className="settings-modal" onClick={(e) => e.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">MIRA / CONFIGURATION</p><h2>Settings</h2></div><button className="icon-button" onClick={() => setShowSettings(false)} aria-label="Close settings"><X size={18} /></button></div><div className="settings-list"><label>Wake phrase <span>“Mira” + “Hey Mira”</span></label><label>Voice interaction <span>Wake word + push-to-talk</span></label><label>Live companion <span>Optional camera · on-device cues</span></label><label>Permission ceiling <span>Level 1 · Reversible</span></label></div><div className="modal-note"><ShieldCheck size={16} /> Camera use is opt-in. Video is analyzed on this device and is never recorded or uploaded; expression cues are not a reliable measure of emotion.</div><div className="modal-note"><Sparkles size={16} /> Local preview status is genuine; connect your Windows bridge to enable actions.</div><button className="modal-close" onClick={() => setShowSettings(false)}>Done</button></div></div>}
     </main>
   )
 }

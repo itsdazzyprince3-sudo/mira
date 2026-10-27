@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   }
   if (!process.env.ABHIBOTS_API_KEY) {
     return NextResponse.json({
-      error: 'MIRA’s AbhiBots connection is not configured. Set ABHIBOTS_API_KEY in .env.local or in your Vercel project’s Environment Variables, then restart or redeploy.',
+      error: 'MIRA couldn’t reply just now. Please try again in a moment.',
     }, { status: 503 })
   }
 
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     })
 
     if (!result.text.trim()) {
-      return NextResponse.json({ error: 'MIRA’s AI provider returned an empty response. Please try again.' }, { status: 502 })
+      return NextResponse.json({ error: 'MIRA couldn’t reply just now. Please try again in a moment.' }, { status: 502 })
     }
 
     return NextResponse.json({ reply: result.text })
@@ -67,16 +67,16 @@ export async function POST(request: Request) {
       : undefined
     console.error('[MIRA] AbhiBots API request failed:', providerMessage || 'Unknown provider error')
     if (statusCode === 401) {
-      return NextResponse.json({ error: 'AbhiBots rejected the key. Check that ABHIBOTS_API_KEY is your active AbhiBots key.' }, { status: 401 })
+      return NextResponse.json({ error: 'MIRA couldn’t reply just now. Please try again in a moment.' }, { status: 502 })
     }
-    if (statusCode === 402 || statusCode === 403 || statusCode === 429) {
-      return NextResponse.json({ error: 'AbhiBots rejected the request. Check that the key belongs to your AbhiBots account and has access or quota for this model.' }, { status: statusCode === 429 ? 429 : 402 })
+    if (statusCode === 429) {
+      return NextResponse.json({ error: 'MIRA is busy right now. Please wait a moment and try again.' }, { status: 429 })
     }
-    if (statusCode === 404 || statusCode === 410) {
-      return NextResponse.json({ error: `AbhiBots could not find model "${modelId}". Set ABHIBOTS_MODEL to an exact model ID listed in your AbhiBots account.` }, { status: 502 })
+    if (statusCode === 402 || statusCode === 403 || statusCode === 404 || statusCode === 410) {
+      return NextResponse.json({ error: 'MIRA couldn’t reply just now. Please try again in a moment.' }, { status: 502 })
     }
     return NextResponse.json({
-      error: 'MIRA could not reach AbhiBots. Check ABHIBOTS_API_KEY, ABHIBOTS_BASE_URL, and the model configured in ABHIBOTS_MODEL.',
+      error: 'MIRA couldn’t reply just now. Please try again in a moment.',
     }, { status: 502 })
   }
 }
