@@ -276,7 +276,7 @@ export default function Page() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">PERSONAL INTELLIGENCE / SESSION 01</p><h1>Good evening, Alex.</h1></div>
-          <div className="top-actions"><div className="model-chip"><span className="model-dot" /><span><small>AI BRAIN</small> xAI / AI Gateway</span><ChevronRight size={14} /></div><button className="icon-button" aria-label="Help"><CircleHelp size={18} /></button><button className="icon-button" aria-label="More options"><MoreHorizontal size={18} /></button></div>
+          <div className="top-actions"><div className="model-chip"><span className="model-dot" /><span><small>AI BRAIN</small> AbhiBots · Nemotron Ultra</span><ChevronRight size={14} /></div><button className="icon-button" aria-label="Help"><CircleHelp size={18} /></button><button className="icon-button" aria-label="More options"><MoreHorizontal size={18} /></button></div>
         </header>
         <div className="content-grid">
           <div className="conversation-column">
