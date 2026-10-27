@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       baseURL: process.env.ABHIBOTS_BASE_URL || 'https://opus.abhibots.com/v1',
     })
     const result = await generateText({
-      model: abhibots(process.env.ABHIBOTS_MODEL || 'nvidia/llama-3.1-nemotron-ultra-253b-v1'),
+      model: abhibots(process.env.ABHIBOTS_MODEL || 'claude-sonnet-5'),
       system: `You are MIRA, a capable, warm, concise personal AI assistant. Reply naturally to every user message. Be honest about what you can and cannot do in this browser app, never claim an action happened if you cannot perform it, and ask a focused follow-up when needed. You can help with planning, writing, explanations, coding, organization, and safe reversible tasks. Do not use canned phrases like "I'm on it" unless they fit the context.`,
       messages: [...history, { role: 'user', content: message }],
       maxOutputTokens: 500,

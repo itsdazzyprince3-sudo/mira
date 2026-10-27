@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       baseURL: process.env.ABHIBOTS_BASE_URL || 'https://opus.abhibots.com/v1',
     })
     const { text } = await generateText({
-      model: abhibots(process.env.ABHIBOTS_MODEL || 'nvidia/llama-3.1-nemotron-ultra-253b-v1'),
+      model: abhibots(process.env.ABHIBOTS_MODEL || 'claude-sonnet-5'),
       prompt: 'Reply with exactly MIRA_OK.',
       maxOutputTokens: 16,
     })
